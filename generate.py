@@ -15,6 +15,7 @@ class QuestionGeneration:
         self.tokenizer = T5Tokenizer.from_pretrained(trained_tokenizer_path)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.model.to(self.device)
+        self.model.eval()
 
     def generate(self, answer:str, context:str):
         input_text = '<answer> %s <context> %s ' % (answer, context)
@@ -24,7 +25,6 @@ class QuestionGeneration:
         )
         input_ids = encoding['input_ids'].to(self.device)
         attention_mask = encoding['attention_mask'].to(self.device)
-        self.model.eval()
         beam_outputs = self.model.generate(
             input_ids = input_ids,
             attention_mask = attention_mask
