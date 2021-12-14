@@ -8,6 +8,7 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 trained_model_path = 'ZhangCheng/T5-Base-Fine-Tuned-for-Question-Generation'
 trained_tokenizer_path = 'ZhangCheng/T5-Base-Fine-Tuned-for-Question-Generation'
 
+
 class QuestionGeneration:
 
     def __init__(self, model_dir=None):
@@ -17,7 +18,7 @@ class QuestionGeneration:
         self.model = self.model.to(self.device)
         self.model.eval()
 
-    def generate(self, answer:str, context:str):
+    def generate(self, answer: str, context: str):
         input_text = '<answer> %s <context> %s ' % (answer, context)
         encoding = self.tokenizer.encode_plus(
             input_text,
@@ -26,13 +27,13 @@ class QuestionGeneration:
         input_ids = encoding['input_ids'].to(self.device)
         attention_mask = encoding['attention_mask'].to(self.device)
         beam_outputs = self.model.generate(
-            input_ids = input_ids,
-            attention_mask = attention_mask
+            input_ids=input_ids,
+            attention_mask=attention_mask
         )
         question = self.tokenizer.decode(
             beam_outputs[0],
-            skip_special_tokens = True,
-            clean_up_tokenization_spaces = True
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True
         )
         return {'question': question, 'answer': answer, 'context': context}
 
