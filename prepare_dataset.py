@@ -18,8 +18,8 @@ print('train: ', len(train_dataset))
 print('validation: ', len(valid_dataset))
 
 pd.set_option('display.max_colwidth', None) # use None to not limit the column width
-df_train = pd.DataFrame(columns = ['context', 'answer', 'question'])
-df_validation = pd.DataFrame(columns = ['context', 'answer', 'question'])
+df_train = pd.DataFrame(columns=['context', 'answer', 'question'])
+df_validation = pd.DataFrame(columns=['context', 'answer', 'question'])
 
 print('Loading df_train...')
 num_of_long_answer = 0
@@ -77,6 +77,4 @@ if not os.path.exists(dataset_save_path):
 df_train.to_csv(train_file_path, index=False)
 df_validation.to_csv(validation_file_path, index=False)
 print('All done.')
-
-
 
