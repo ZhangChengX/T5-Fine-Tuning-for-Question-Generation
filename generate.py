@@ -24,14 +24,25 @@ class QuestionGeneration:
             input_text,
             return_tensors='pt'
         )
-        input_ids = encoding['input_ids'].to(self.device)
-        attention_mask = encoding['attention_mask'].to(self.device)
-        beam_outputs = self.model.generate(
+        input_ids = encoding['input_ids']
+        attention_mask = encoding['attention_mask']
+        outputs = self.model.generate(
             input_ids=input_ids,
-            attention_mask=attention_mask
+            attention_mask=attention_mask,
+            num_beams = 3,
+            num_return_sequences = 1
         )
+        # question_list = []
+        # for output in outputs:
+        #     question = self.tokenizer.decode(
+        #         output,
+        #         skip_special_tokens=True,
+        #         clean_up_tokenization_spaces=True
+        #     )
+        #     question_list.append(question)
+        # return {'question': question_list, 'answer': answer, 'context': context}
         question = self.tokenizer.decode(
-            beam_outputs[0],
+            outputs[0],
             skip_special_tokens=True,
             clean_up_tokenization_spaces=True
         )
