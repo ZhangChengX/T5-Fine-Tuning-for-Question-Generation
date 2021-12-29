@@ -37,7 +37,7 @@ class QGDataset(Dataset):
         self.question_column = 'question'
         self.inputs = []
         self.targets = []
-        self._build()
+        self._load_data()
 
     def __len__(self):
         return len(self.inputs)
@@ -51,7 +51,7 @@ class QGDataset(Dataset):
         labels[labels == 0] = -100
         return {'source_ids': source_ids, 'source_mask': source_mask, 'target_ids': target_ids, 'target_mask': target_mask, 'labels': labels}
 
-    def _build(self):
+    def _load_data(self):
         for idx in tqdm(range(len(self.data))):
 
             context, answer, target = self.data.loc[idx, self.context_column], self.data.loc[idx, self.answer_column], self.data.loc[idx, self.question_column]
@@ -80,46 +80,44 @@ class QGDataset(Dataset):
 
 class T5FineTuner(pl.LightningModule):
 
-    def __init__(self, batch_size, num_workers, t5_model, t5_tokenizer):
-        super(T5FineTuner, self).__init__()
+    def __init__(self, model, tokenizer, batch_size, num_workers):
+        super().__init__()
+        self.model = model
+        self.tokenizer = tokenizer
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.model = t5_model
-        self.tokenizer = t5_tokenizer
 
-    def forward(self, input_ids, attention_mask=None, decoder_attention_mask=None, lm_labels=None):
-        outputs = self.model(
+    def forward(self, input_ids, attention_mask, labels=None):
+        return self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            decoder_attention_mask=decoder_attention_mask,
-            labels=lm_labels, # decoder_input_ids included in lm_labels
+            labels=labels, # decoder_input_ids included in lm_labels
         )
-        return outputs
 
     def training_step(self, batch, batch_idx):
         outputs = self.forward(
             input_ids=batch['source_ids'],
             attention_mask=batch['source_mask'],
-            decoder_input_ids=batch['target_ids'],
-            decoder_attention_mask=batch['target_mask'],
-            lm_labels=batch['labels']
+            # decoder_input_ids=batch['target_ids'],
+            # decoder_attention_mask=batch['target_mask'],
+            labels=batch['labels']
         )
-        loss = outputs[0]
-        self.log('train_loss: ', loss)
-        # print('train loss: ', loss)
+        loss = outputs.loss
+        # logits = outputs.logits
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         outputs = self.forward(
             input_ids=batch['source_ids'],
             attention_mask=batch['source_mask'],
-            decoder_input_ids=batch['target_ids'],
-            decoder_attention_mask=batch['target_mask'],
-            lm_labels=batch['labels']
+            # decoder_input_ids=batch['target_ids'],
+            # decoder_attention_mask=batch['target_mask'],
+            labels=batch['labels']
         )
-        loss = outputs[0]
-        self.log('val_loss: ', loss)
-        # print('val loss: ', loss)
+        loss = outputs.loss
+        # logits = outputs.logits
+        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def train_dataloader(self):
@@ -129,22 +127,21 @@ class T5FineTuner(pl.LightningModule):
         return DataLoader(validation_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=3e-5, eps=1e-8)
-        return optimizer
+        return AdamW(self.parameters(), lr=3e-5, eps=1e-8)
 
 
 if __name__ == "__main__":
 
     start_time = time.time()
+    pl.seed_everything(99)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
-    pl.seed_everything(99)
 
     print('Loading pre-trained model...')
     tokenizer = T5Tokenizer.from_pretrained(pretrained_model)
     model = T5ForConditionalGeneration.from_pretrained(pretrained_model)
-    model.to(device)
+    model = model.to(device)
     tokenizer.add_special_tokens(
         {'additional_special_tokens': ['<answer>', '<context>']}
     )
@@ -156,8 +153,8 @@ if __name__ == "__main__":
     print('train_dataset: ', len(train_dataset))
     print('validation_dataset: ', len(validation_dataset))
 
-    print('Start fine tuning...')
-    model = T5FineTuner(batch_size, num_workers, model, tokenizer)
+    print ('Initializing model...')
+    model = T5FineTuner(model, tokenizer, batch_size, num_workers)
     trainer = pl.Trainer(
         max_epochs=10,
         gpus=1,
@@ -165,7 +162,9 @@ if __name__ == "__main__":
         progress_bar_refresh_rate=30,
         callbacks=[EarlyStopping(monitor="val_loss")]
     )
+    print('Fine tuning...')
     trainer.fit(model)
+    # trainer.test()
 
     print('Saving model...')
     if not os.path.exists(save_model_path):
