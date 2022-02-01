@@ -23,7 +23,7 @@ class QuestionGeneration:
         encoding = self.tokenizer.encode_plus(
             input_text,
             return_tensors='pt'
-        )
+        ).to(self.device)
         input_ids = encoding['input_ids']
         attention_mask = encoding['attention_mask']
         outputs = self.model.generate(
