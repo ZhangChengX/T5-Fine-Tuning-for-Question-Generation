@@ -4,6 +4,7 @@
 import os
 import time
 import copy
+import argparse
 import torch
 import pytorch_lightning as pl
 import pandas as pd
@@ -20,9 +21,13 @@ save_tokenizer_path = 'tokenizer/'
 pretrained_model = 't5-base'
 # pretrained_model = 't5-large'
 # pretrained_model = 'google/t5-v1_1-large'
-num_workers = 0
-# The batch size should pretty much be as large as possible without exceeding memory.
-batch_size = 6
+
+args = argparse.Namespace()
+args.num_workers = 0
+args.batch_size = 8
+args.learning_rate = 3e-5
+args.eps = 1e-8
+args.weight_decay = 0.0
 
 
 class QGDataset(Dataset):
@@ -55,6 +60,10 @@ class QGDataset(Dataset):
         for idx in tqdm(range(len(self.data))):
 
             context, answer, target = self.data.loc[idx, self.context_column], self.data.loc[idx, self.answer_column], self.data.loc[idx, self.question_column]
+            # if len(str(answer).split()) >= 8:
+            #     input_text = '<longanswer> %s <context> %s ' % (answer, context)
+            # else:
+            #     input_text = '<answer> %s <context> %s ' % (answer, context)
             input_text = '<answer> %s <context> %s ' % (answer, context)
             target = str(target)
 
@@ -80,12 +89,11 @@ class QGDataset(Dataset):
 
 class T5FineTuner(pl.LightningModule):
 
-    def __init__(self, model, tokenizer, batch_size, num_workers):
+    def __init__(self, model, tokenizer, args):
         super().__init__()
         self.model = model
         self.tokenizer = tokenizer
-        self.batch_size = batch_size
-        self.num_workers = num_workers
+        self.args = args
 
     def forward(self, input_ids, attention_mask, labels=None):
         return self.model(
@@ -121,13 +129,25 @@ class T5FineTuner(pl.LightningModule):
         return loss
 
     def train_dataloader(self):
-        return DataLoader(train_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(train_dataset, batch_size=self.args.batch_size, num_workers=self.args.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(validation_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(validation_dataset, batch_size=self.args.batch_size, num_workers=self.args.num_workers)
 
     def configure_optimizers(self):
-        return AdamW(self.parameters(), lr=3e-5, eps=1e-8)
+        # no_decay = ["bias", "LayerNorm.weight"]
+        # optimizer_grouped_parameters = [
+        #     {
+        #         "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
+        #         "weight_decay": self.args.weight_decay,
+        #     },
+        #     {
+        #         "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
+        #         "weight_decay": 0.0,
+        #     },
+        # ]
+        # return AdamW(optimizer_grouped_parameters, lr=self.args.learning_rate, eps=args.eps)
+        return AdamW(self.parameters(), lr=self.args.learning_rate, eps=args.eps)
 
 
 if __name__ == "__main__":
@@ -139,9 +159,8 @@ if __name__ == "__main__":
     print('Using device:', device)
 
     print('Loading pre-trained model...')
+    model = T5ForConditionalGeneration.from_pretrained(pretrained_model).to(device)
     tokenizer = T5Tokenizer.from_pretrained(pretrained_model)
-    model = T5ForConditionalGeneration.from_pretrained(pretrained_model)
-    model = model.to(device)
     tokenizer.add_special_tokens(
         {'additional_special_tokens': ['<answer>', '<context>']}
     )
@@ -154,14 +173,27 @@ if __name__ == "__main__":
     print('validation_dataset: ', len(validation_dataset))
 
     print ('Initializing model...')
-    model = T5FineTuner(model, tokenizer, batch_size, num_workers)
+    model = T5FineTuner(model, tokenizer, args)
     trainer = pl.Trainer(
         max_epochs=10,
         gpus=1,
-        auto_select_gpus=True,
+        # gradient_clip_val=1.0,
+        # auto_lr_find=True,
         progress_bar_refresh_rate=30,
         callbacks=[EarlyStopping(monitor="val_loss")]
     )
+    print('Run learning rate finder...')
+    lr_finder = trainer.tuner.lr_find(model)
+    # args.learning_rate = lr_finder.suggestion()
+    print('Suggested lr: ', lr_finder.suggestion())
+
+    # # Plot with lr
+    # import matplotlib
+    # matplotlib.use("Agg")
+    # fig = lr_finder.plot(suggest=True)
+    # fig.savefig('lr.png')
+    # # fig.show()
+
     print('Fine tuning...')
     trainer.fit(model)
     # trainer.test()
