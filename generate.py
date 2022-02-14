@@ -4,6 +4,7 @@
 
 import torch
 from transformers import T5Tokenizer, T5ForConditionalGeneration
+from sentence_embeddings import SentenceEmbeddings
 
 trained_model_path = 'ZhangCheng/T5-Base-Fine-Tuned-for-Question-Generation'
 trained_tokenizer_path = 'ZhangCheng/T5-Base-Fine-Tuned-for-Question-Generation'
@@ -32,33 +33,30 @@ class QuestionGeneration:
             num_beams = 3,
             num_return_sequences = 1
         )
-        # question_list = []
-        # for output in outputs:
-        #     question = self.tokenizer.decode(
-        #         output,
-        #         skip_special_tokens=True,
-        #         clean_up_tokenization_spaces=True
-        #     )
-        #     question_list.append(question)
-        # return {'question': question_list, 'answer': answer, 'context': context}
-        question = self.tokenizer.decode(
-            outputs[0],
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=True
-        )
-        return {'question': question, 'answer': answer, 'context': context}
+        question_list = []
+        for output in outputs:
+            question = self.tokenizer.decode(
+                output,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=True
+            )
+            question_list.append({'question': question, 'answer': answer, 'context': context})
+        return question_list
 
 
 if __name__ == "__main__":
+
     context = '''
     ZhangCheng fine-tuned T5 on SQuAD dataset for question generation.
     '''
     answer_list = ['ZhangCheng', 'SQuAD', 'question generation']
 
     QG = QuestionGeneration()
+    SE = SentenceEmbeddings()
 
     for answer in answer_list:
-        qa_pair = QG.generate(answer, context)
-        print('question: ', qa_pair['question'])
-        print('answer: ', qa_pair['answer'])
+        qa_pair_list = QG.generate(answer, context)
+        most_similar = SE.get_most_similar(context, qa_pair_list)
+        print(most_similar)
+
 
